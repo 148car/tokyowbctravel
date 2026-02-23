@@ -1,357 +1,340 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Plane, 
-  MapPin, 
-  Calendar, 
-  Ticket, 
-  ChevronRight,
-  Sparkles,
-  Send,
-  LayoutGrid,
-  Trophy,
-  Zap,
-  Heart
-} from 'lucide-react';
-import { initializeApp, getApps } from 'firebase/app';
-import { 
-  getAuth, 
-  signInWithCustomToken, 
-  signInAnonymously, 
-  onAuthStateChanged 
-} from 'firebase/auth';
-import { 
-  getFirestore, 
-  doc, 
-  onSnapshot 
-} from 'firebase/firestore';
-
-// --- 全域變數 ---
-const apiKey = ""; 
-
-export default function App() {
-  const [hasStarted, setHasStarted] = useState(false);
-  const [activeTab, setActiveTab] = useState('itinerary');
-  const [user, setUser] = useState(null);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiAdvice, setAiAdvice] = useState({});
-  const [chatInput, setChatInput] = useState("");
-  const [generatedImage, setGeneratedImage] = useState(null);
-  const [chatHistory, setChatHistory] = useState([
-    { role: 'bot', text: '美子您好！我是您的東京 WBC 應援小助手。⚾✨ 今天的應援熱情也滿分喔！' }
-  ]);
-  const chatEndRef = useRef(null);
-
-  const [tripData, setTripData] = useState({
-    title: "美子 w. 媽の TOKYO WBC 2026 ⚾✨",
-    dates: "2026.03.10 - 03.15",
-    flights: [
-      { id: '1', type: '去程', flight: 'CI100', time: '03.10 09:30', from: 'TPE', to: 'NRT', pnr: 'WBC2026' },
-      { id: '2', type: '回程', flight: 'CI101', time: '03.15 16:20', from: 'NRT', to: 'TPE', pnr: 'WBC2026' }
-    ],
-    itinerary: [
-      { day: 'Day 1 (3/10)', title: '東京登陸！應援準備', spots: ['成田機場', '東京巨蛋飯店 Check-in', '巨蛋周邊商品店'] },
-      { day: 'Day 2 (3/11)', title: 'WBC 預賽：台灣大賽', spots: ['東京巨蛋觀賽 (18:00)', '水道橋居酒屋慶功'] },
-      { day: 'Day 3 (3/12)', title: '築地市場與應援休養', spots: ['築地場外市場', '豐洲千客萬來', '台場散步'] },
-      { day: 'Day 4 (3/13)', title: '應援補給！銀座血拼', spots: ['銀座 Uniqlo 旗艦店', '銀座木村家', '棒球主題餐廳'] },
-      { day: 'Day 5 (3/14)', title: '巨蛋巡禮與神社祈福', spots: ['野球殿堂博物館', '湯島天滿宮(祈求全壘打)', '澀谷夜景'] },
-      { day: 'Day 6 (3/15)', title: '感動回程', spots: ['上野公園散策', 'Skyliner 赴機場', '免稅店最後衝刺'] },
-    ],
-  });
-
-  // 生成符合 Q 版風格的棒球角色 (優化提示詞以達成透明感視覺)
-  useEffect(() => {
-    const generateHeroImage = async () => {
-      if (generatedImage) return;
-      try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent?key=${apiKey}`;
-        // 提示詞要求背景顏色與 App 入口頁面背景顏色 #1A3A8A 匹配
-        const prompt = "A cute, hand-drawn Japanese style cartoon baseball character with a happy smiley face, wearing a tiny baseball cap, giving a thumbs up. Flat illustration, bold clean lines. The background MUST be a solid deep navy blue color hex #1A3A8A with NO shadows and NO borders, so it looks seamless on the website. Kawaii aesthetic.";
-        
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { responseModalities: ['TEXT', 'IMAGE'] }
-          })
-        });
-        const result = await response.json();
-        const base64 = result.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
-        if (base64) setGeneratedImage(`data:image/png;base64,${base64}`);
-      } catch (e) {
-        console.error("Image generation failed", e);
-      }
-    };
-    generateHeroImage();
-  }, []);
-
-  // Firebase 初始化與資料監聽
-  useEffect(() => {
-    let unsubscribeAuth = () => {};
-    let unsubscribeDoc = () => {};
-    const startApp = async () => {
-      try {
-        const firebaseConfig = (typeof __firebase_config !== 'undefined' && __firebase_config) ? JSON.parse(__firebase_config) : null;
-        if (!firebaseConfig) return;
-        let app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-        const auth = getAuth(app);
-        const db = getFirestore(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'tokyo-trip-v3';
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>美子 w. 媽の TOKYO WBC 2026 ⚾✨</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            -webkit-tap-highlight-color: transparent;
         }
-        unsubscribeAuth = onAuthStateChanged(auth, (u) => {
-          setUser(u);
-          if (u) {
-            const tripDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'trip_info', 'main');
-            unsubscribeDoc = onSnapshot(tripDocRef, (snap) => {
-              if (snap.exists()) setTripData(snap.data());
-            });
-          }
-        });
-      } catch (e) {}
-    };
-    startApp();
-    return () => { unsubscribeAuth(); unsubscribeDoc(); };
-  }, []);
+        .fade-in { animation: fadeIn 0.5s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .bounce-slow { animation: bounce 3s infinite; }
+        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
+        .tab-active { color: #1A3A8A; opacity: 1 !important; transform: scale(1.1); }
+        .hide { display: none; }
+    </style>
+</head>
+<body class="bg-[#FDFCF8] text-[#1A1A1A]">
 
-  const callGemini = async (prompt) => {
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          systemInstruction: { parts: [{ text: "你是一位親切的日本旅遊嚮導，說話語氣非常可愛，常使用 emoji，特別擅長棒球知識。" }] }
-        })
-      });
-      const data = await response.json();
-      return data.candidates?.[0]?.content?.parts?.[0]?.text;
-    } catch (e) { return "哎呀，連線失敗了 😭"; }
-  };
-
-  const handleChat = async () => {
-    if (!chatInput.trim() || aiLoading) return;
-    const userMsg = chatInput;
-    setChatInput("");
-    setChatHistory(prev => [...prev, { role: 'user', text: userMsg }]);
-    setAiLoading(true);
-    const response = await callGemini(userMsg);
-    setChatHistory(prev => [...prev, { role: 'bot', text: response }]);
-    setAiLoading(false);
-  };
-
-  // --- 入口頁面 ---
-  if (!hasStarted) {
-    return (
-      <div className="min-h-screen bg-[#1A3A8A] flex flex-col items-center justify-center p-8 text-center overflow-hidden">
-        <div className="relative mb-8">
-          {/* 移除背景發光，強調透明角色感 */}
-          <div className="relative w-56 h-56 flex items-center justify-center animate-[bounce_3s_infinite]">
-            {generatedImage ? (
-              <img src={generatedImage} alt="Baseball Hero" className="w-full h-full object-contain" />
-            ) : (
-              <div className="w-48 h-48 bg-white/10 rounded-full flex items-center justify-center animate-pulse">
-                <Zap className="text-white opacity-30" size={48} />
-              </div>
-            )}
-            <Zap className="absolute -top-4 -right-4 text-[#FFD60A] fill-[#FFD60A] animate-ping" size={40} />
-          </div>
+    <!-- 入口頁面 (Splash Screen) -->
+    <div id="splash-screen" class="min-h-screen bg-[#1A3A8A] flex flex-col items-center justify-center p-8 text-center fixed inset-0 z-[100]">
+        <div class="relative mb-8">
+            <div id="hero-image-container" class="relative w-56 h-56 flex items-center justify-center bounce-slow">
+                <div class="w-48 h-48 bg-white/10 rounded-full flex items-center justify-center animate-pulse">
+                    <i data-lucide="zap" class="text-white opacity-30 w-12 h-12"></i>
+                </div>
+            </div>
+            <i data-lucide="zap" class="absolute -top-4 -right-4 text-[#FFD60A] fill-[#FFD60A] animate-ping w-10 h-10"></i>
         </div>
         
-        <div className="space-y-2 mb-12 relative">
-          <h2 className="text-white/80 font-bold tracking-[0.3em] text-sm uppercase">Meiko & Mom</h2>
-          <h1 className="text-4xl font-black text-white tracking-tight leading-tight">
-            美子 w. 媽の<br/>
-            <span className="text-[#FFD60A]">WBC 2026</span>
-          </h1>
-          <div className="h-1 w-12 bg-[#FF3B30] mx-auto mt-4 rounded-full"></div>
+        <div class="space-y-2 mb-12 relative">
+            <h2 class="text-white/80 font-bold tracking-[0.3em] text-sm uppercase">Meiko & Mom</h2>
+            <h1 class="text-4xl font-black text-white tracking-tight leading-tight">
+                美子 w. 媽の<br/>
+                <span class="text-[#FFD60A]">WBC 2026</span>
+            </h1>
+            <div class="h-1 w-12 bg-[#FF3B30] mx-auto mt-4 rounded-full"></div>
         </div>
         
-        <button 
-          onClick={() => setHasStarted(true)}
-          className="group relative w-full max-w-xs bg-white text-[#1A3A8A] py-5 rounded-[2.5rem] font-black text-xl shadow-[0_8px_0_#0D1F4A] active:shadow-none active:translate-y-2 transition-all duration-75 flex items-center justify-center gap-3"
-        >
-          進入應援手冊
-          <Trophy size={24} className="group-hover:rotate-12 transition-transform" />
+        <button onclick="startApp()" class="group relative w-full max-w-xs bg-white text-[#1A3A8A] py-5 rounded-[2.5rem] font-black text-xl shadow-[0_8px_0_#0D1F4A] active:shadow-none active:translate-y-2 transition-all flex items-center justify-center gap-3">
+            進入應援手冊
+            <i data-lucide="trophy" class="w-6 h-6"></i>
         </button>
-        
-        <p className="mt-12 text-white/40 text-[10px] font-bold tracking-[0.5em] uppercase">Ready to Play Ball</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-[#FDFCF8] text-[#1A1A1A] font-sans">
-      
-      {/* Header (改為不凍結，隨頁面捲動) */}
-      <header className="relative w-full bg-[#1A3A8A] text-white pt-16 pb-8 px-6 rounded-b-[48px] shadow-xl mb-4">
-        <div className="max-w-lg mx-auto flex justify-between items-start">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="bg-[#FF3B30] text-[10px] font-bold px-2 py-0.5 rounded-full">LIVE 2026</span>
-              <p className="text-xs font-bold opacity-70 tracking-widest">{tripData.dates}</p>
-            </div>
-            <h1 className="text-2xl font-black tracking-tight">{tripData.title}</h1>
-          </div>
-          <button onClick={() => setHasStarted(false)} className="bg-white/10 p-2.5 rounded-2xl active:scale-90 transition-transform">
-            <Heart size={20} fill="white" className="text-white" />
-          </button>
-        </div>
-        {/* 裝飾性的小球點 */}
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 opacity-30">
-          {[1,2,3].map(i => <div key={i} className="w-1.5 h-1.5 rounded-full bg-white"></div>)}
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="px-5 pt-4 pb-36 max-w-lg mx-auto">
-        {activeTab === 'itinerary' && (
-          <div className="space-y-8 animate-in fade-in duration-500">
-            {tripData.itinerary.map((day, idx) => (
-              <div key={idx} className="relative pl-8">
-                {/* 日系時間軸線條 */}
-                <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-[#1A3A8A]/10">
-                  <div className="absolute top-1 -left-[5px] w-3 h-3 rounded-full bg-[#1A3A8A] ring-4 ring-white"></div>
-                </div>
-                
-                <div className="flex justify-between items-center mb-3">
-                  <h2 className="text-lg font-black text-[#1A3A8A]">{day.day}</h2>
-                  <button className="text-xs font-bold text-[#1A3A8A] bg-[#FFD60A] px-3 py-1.5 rounded-xl shadow-sm active:scale-95 transition-transform">
-                    應援攻略 ✨
-                  </button>
-                </div>
-                
-                <div className="bg-white rounded-[32px] p-5 shadow-[0_4px_20px_rgba(0,0,0,0.05)] border border-[#1A3A8A]/5">
-                  <h3 className="font-bold text-[#333] mb-4 flex items-center gap-2">
-                    <span className="w-1.5 h-4 bg-[#FF3B30] rounded-full"></span>
-                    {day.title}
-                  </h3>
-                  <div className="space-y-4">
-                    {day.spots.map((spot, i) => (
-                      <div key={i} className="flex items-center gap-4 group cursor-pointer">
-                        <div className="w-10 h-10 rounded-2xl bg-[#F0F4FF] flex items-center justify-center group-hover:bg-[#1A3A8A] group-hover:text-white transition-all">
-                          <MapPin size={16} />
-                        </div>
-                        <span className="text-[15px] font-bold text-[#444]">{spot}</span>
-                        <ChevronRight size={14} className="ml-auto text-[#CCC]" />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {activeTab === 'tickets' && (
-          <div className="space-y-6 animate-in slide-in-from-bottom-4">
-            <h2 className="text-2xl font-black text-[#1A3A8A] px-1">應援錢包</h2>
-            <div className="bg-[#1A3A8A] rounded-[40px] text-white p-8 shadow-2xl relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-8 opacity-10">
-                <Trophy size={120} />
-              </div>
-              <div className="relative z-10">
-                <div className="flex justify-between items-center mb-10">
-                  <div className="bg-white/20 backdrop-blur px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest">Game Entry</div>
-                  <Zap size={24} className="text-[#FFD60A] fill-[#FFD60A]" />
-                </div>
-                <div className="flex justify-between items-end">
-                  <div>
-                    <h4 className="text-3xl font-black mb-1">台灣 vs 日本</h4>
-                    <p className="text-sm font-bold opacity-60">東京巨蛋 | 內野應援 A 區</p>
-                  </div>
-                </div>
-                <div className="mt-10 pt-6 border-t border-white/10 flex justify-between">
-                  <div>
-                    <p className="text-[10px] font-bold opacity-40 uppercase">Gate</p>
-                    <p className="text-lg font-black">25</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold opacity-40 uppercase">Seat</p>
-                    <p className="text-lg font-black">12-B</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold opacity-40 uppercase">Start</p>
-                    <p className="text-lg font-black">18:00</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            {tripData.flights.map((f, idx) => (
-              <div key={idx} className="bg-white rounded-[32px] p-6 border-2 border-dashed border-[#1A3A8A]/20 flex justify-between items-center shadow-sm">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <Plane size={14} className="text-[#1A3A8A]" />
-                    <span className="text-xs font-black text-[#1A3A8A]">{f.flight}</span>
-                  </div>
-                  <p className="text-2xl font-black text-[#1A3A8A]">{f.from} → {f.to}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-[10px] font-bold opacity-40">DATE</p>
-                  <p className="font-bold">{f.time.split(' ')[0]}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {activeTab === 'chat' && (
-          <div className="flex flex-col h-[65vh] animate-in fade-in">
-            <div className="flex-1 overflow-y-auto space-y-5 pb-6 px-1">
-              {chatHistory.map((msg, i) => (
-                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] px-5 py-3.5 rounded-[28px] text-[15px] font-bold ${
-                    msg.role === 'user' 
-                      ? 'bg-[#1A3A8A] text-white rounded-tr-none shadow-lg' 
-                      : 'bg-white text-[#1A3A8A] rounded-tl-none border border-[#1A3A8A]/10 shadow-sm'
-                  }`}>
-                    {msg.text}
-                  </div>
-                </div>
-              ))}
-              <div ref={chatEndRef} />
-            </div>
-            <div className="sticky bottom-0 bg-[#FDFCF8] pt-4 pb-4 px-1">
-              <div className="flex gap-2 items-center bg-white rounded-[24px] px-5 py-3 shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-[#1A3A8A]/5">
-                <input 
-                  type="text" 
-                  value={chatInput} 
-                  onChange={(e) => setChatInput(e.target.value)} 
-                  onKeyDown={(e) => e.key === 'Enter' && handleChat()} 
-                  placeholder="問問應援小幫手..." 
-                  className="flex-1 bg-transparent border-none text-[15px] font-bold focus:ring-0 outline-none" 
-                />
-                <button onClick={handleChat} className="bg-[#FFD60A] text-[#1A3A8A] p-2.5 rounded-2xl active:scale-90 transition-transform">
-                  <Send size={18} />
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </main>
-
-      {/* iOS Tab Bar */}
-      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-xl border-t border-[#1A3A8A]/10 pb-10 pt-3">
-        <div className="flex justify-around items-center max-w-md mx-auto px-6">
-          <button onClick={() => setActiveTab('itinerary')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'itinerary' ? 'text-[#1A3A8A] scale-110' : 'text-[#8E8E93] opacity-40'}`}>
-            <Calendar size={24} strokeWidth={activeTab === 'itinerary' ? 3 : 2} />
-            <span className="text-[10px] font-black uppercase">行程</span>
-          </button>
-          <button onClick={() => setActiveTab('tickets')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'tickets' ? 'text-[#1A3A8A] scale-110' : 'text-[#8E8E93] opacity-40'}`}>
-            <Ticket size={24} strokeWidth={activeTab === 'tickets' ? 3 : 2} />
-            <span className="text-[10px] font-black uppercase">錢包</span>
-          </button>
-          <button onClick={() => setActiveTab('chat')} className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'chat' ? 'text-[#1A3A8A] scale-110' : 'text-[#8E8E93] opacity-40'}`}>
-            <LayoutGrid size={24} strokeWidth={activeTab === 'chat' ? 3 : 2} />
-            <span className="text-[10px] font-black uppercase">助手</span>
-          </button>
-        </div>
-      </nav>
+        <p class="mt-12 text-white/40 text-[10px] font-bold tracking-[0.5em] uppercase">Play Ball!</p>
     </div>
-  );
-}
+
+    <!-- 主程式頁面 (Main App) -->
+    <div id="main-app" class="hide min-h-screen pb-32">
+        <header class="relative w-full bg-[#1A3A8A] text-white pt-16 pb-8 px-6 rounded-b-[48px] shadow-xl mb-4">
+            <div class="max-w-lg mx-auto flex justify-between items-start">
+                <div>
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="bg-[#FF3B30] text-[10px] font-bold px-2 py-0.5 rounded-full">LIVE 2026</span>
+                        <p id="header-dates" class="text-xs font-bold opacity-70 tracking-widest">載入中...</p>
+                    </div>
+                    <h1 id="header-title" class="text-2xl font-black tracking-tight">載入中...</h1>
+                </div>
+                <button onclick="location.reload()" class="bg-white/10 p-2.5 rounded-2xl">
+                    <i data-lucide="heart" class="w-5 h-5 text-white fill-white"></i>
+                </button>
+            </div>
+        </header>
+
+        <main class="px-5 pt-4 max-w-lg mx-auto">
+            <div id="view-itinerary" class="tab-view space-y-8 fade-in"></div>
+            <div id="view-tickets" class="tab-view hide space-y-6 fade-in">
+                <h2 class="text-2xl font-black text-[#1A3A8A] px-1">應援錢包</h2>
+                <div class="bg-[#1A3A8A] rounded-[40px] text-white p-8 shadow-2xl relative overflow-hidden">
+                    <i data-lucide="trophy" class="absolute top-0 right-0 w-32 h-32 opacity-10 -rotate-12 translate-x-8 -translate-y-4"></i>
+                    <div class="relative z-10">
+                        <div class="flex justify-between items-center mb-10">
+                            <div class="bg-white/20 backdrop-blur px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest">WBC Game Ticket</div>
+                            <i data-lucide="zap" class="w-6 h-6 text-[#FFD60A] fill-[#FFD60A]"></i>
+                        </div>
+                        <h4 class="text-3xl font-black mb-1">台灣 vs 日本</h4>
+                        <p class="text-sm font-bold opacity-60">東京巨蛋 | 內野應援 A 區</p>
+                        <div class="mt-10 pt-6 border-t border-white/10 flex justify-between">
+                            <div><p class="text-[10px] font-bold opacity-40 uppercase">Gate</p><p class="text-lg font-black">25</p></div>
+                            <div><p class="text-[10px] font-bold opacity-40 uppercase">Seat</p><p class="text-lg font-black">12-B</p></div>
+                            <div><p class="text-[10px] font-bold opacity-40 uppercase">Start</p><p class="text-lg font-black">18:00</p></div>
+                        </div>
+                    </div>
+                </div>
+                <div id="flight-list" class="space-y-4"></div>
+            </div>
+
+            <div id="view-chat" class="tab-view hide flex flex-col h-[65vh] fade-in">
+                <div id="chat-messages" class="flex-1 overflow-y-auto space-y-5 pb-6 px-1">
+                    <div class="flex justify-start">
+                        <div class="max-w-[85%] px-5 py-3.5 rounded-[28px] text-[15px] font-bold bg-white text-[#1A3A8A] rounded-tl-none border border-[#1A3A8A]/10 shadow-sm">
+                            美子您好！我是您的東京 WBC 應援小助手。⚾✨ 有什麼我可以幫您的嗎？
+                        </div>
+                    </div>
+                </div>
+                <div class="sticky bottom-0 bg-[#FDFCF8] pt-4 pb-4">
+                    <div class="flex gap-2 items-center bg-white rounded-[24px] px-5 py-3 shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-[#1A3A8A]/5">
+                        <input id="chat-input" type="text" placeholder="問問應援小幫手..." class="flex-1 bg-transparent border-none text-[15px] font-bold focus:ring-0 outline-none">
+                        <button onclick="handleChat()" class="bg-[#FFD60A] text-[#1A3A8A] p-2.5 rounded-2xl active:scale-90">
+                            <i data-lucide="send" class="w-[18px] h-[18px]"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <nav class="fixed bottom-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-xl border-t border-[#1A3A8A]/10 pb-10 pt-3">
+            <div class="flex justify-around items-center max-w-md mx-auto px-6">
+                <button onclick="switchTab('itinerary')" id="btn-itinerary" class="tab-btn flex flex-col items-center gap-1 transition-all tab-active">
+                    <i data-lucide="calendar" class="w-6 h-6"></i>
+                    <span class="text-[10px] font-black uppercase">行程</span>
+                </button>
+                <button onclick="switchTab('tickets')" id="btn-tickets" class="tab-btn flex flex-col items-center gap-1 transition-all text-[#8E8E93] opacity-40">
+                    <i data-lucide="ticket" class="w-6 h-6"></i>
+                    <span class="text-[10px] font-black uppercase">錢包</span>
+                </button>
+                <button onclick="switchTab('chat')" id="btn-chat" class="tab-btn flex flex-col items-center gap-1 transition-all text-[#8E8E93] opacity-40">
+                    <i data-lucide="layout-grid" class="w-6 h-6"></i>
+                    <span class="text-[10px] font-black uppercase">助手</span>
+                </button>
+            </div>
+        </nav>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js";
+        import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
+
+        window.apiKey = "";
+        let tripData = {
+            title: "美子 w. 媽の TOKYO WBC 2026 ⚾✨",
+            dates: "2026.03.10 - 03.15",
+            flights: [
+                { type: '去程', flight: 'CI100', time: '03.10 09:30', from: 'TPE', to: 'NRT' },
+                { type: '回程', flight: 'CI101', time: '03.15 16:20', from: 'NRT', to: 'TPE' }
+            ],
+            itinerary: [
+                { day: 'Day 1 (3/10)', title: '東京登陸！應援準備', spots: ['成田機場', '東京巨蛋飯店 Check-in', '巨蛋周邊商品店'] },
+                { day: 'Day 2 (3/11)', title: 'WBC 預賽：台灣大賽', spots: ['東京巨蛋觀賽 (18:00)', '水道橋居酒屋慶功'] },
+                { day: 'Day 3 (3/12)', title: '築地市場與應援休養', spots: ['築地場外市場', '豐洲千客萬來', '台場散步'] },
+                { day: 'Day 4 (3/13)', title: '應援補給！銀座血拼', spots: ['銀座 Uniqlo 旗艦店', '銀座木村家', '棒球主題餐廳'] },
+                { day: 'Day 5 (3/14)', title: '巨蛋巡禮與神社祈福', spots: ['野球殿堂博物館', '湯島天滿宮(祈求全壘打)', '澀谷夜景'] },
+                { day: 'Day 6 (3/15)', title: '感動回程', spots: ['上野公園散策', 'Skyliner 赴機場', '免稅店最後衝刺'] },
+            ]
+        };
+
+        const initFirebase = async () => {
+            try {
+                const configStr = (typeof __firebase_config !== 'undefined') ? __firebase_config : null;
+                if (!configStr) { 
+                    console.warn("Firebase config not found, using default data.");
+                    renderApp(); 
+                    return; 
+                }
+                
+                const firebaseConfig = JSON.parse(configStr);
+                const app = initializeApp(firebaseConfig);
+                const auth = getAuth(app);
+                const db = getFirestore(app);
+                const appId = (typeof __app_id !== 'undefined') ? __app_id : 'tokyo-trip-v3';
+
+                // Rule 3: 必須 await 登入完成
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        // Rule 1: 嚴格路徑規範
+                        const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'trip_info', 'main');
+                        onSnapshot(docRef, 
+                            (snap) => {
+                                if (snap.exists()) {
+                                    tripData = snap.data();
+                                    renderApp();
+                                }
+                            },
+                            (error) => {
+                                console.error("Firestore Permission or Query Error:", error);
+                                // 如果權限失敗，至少顯示預設內容
+                                renderApp();
+                            }
+                        );
+                    }
+                });
+            } catch (err) {
+                console.error("Firebase Init Error:", err);
+                renderApp();
+            }
+        };
+
+        window.renderApp = () => {
+            const titleEl = document.getElementById('header-title');
+            const datesEl = document.getElementById('header-dates');
+            if (titleEl) titleEl.innerText = tripData.title;
+            if (datesEl) datesEl.innerText = tripData.dates;
+            renderItinerary();
+            renderFlights();
+        };
+
+        const renderItinerary = () => {
+            const container = document.getElementById('view-itinerary');
+            if (!container) return;
+            container.innerHTML = tripData.itinerary.map((day, idx) => `
+                <div class="relative pl-8">
+                    <div class="absolute left-0 top-0 bottom-0 w-0.5 bg-[#1A3A8A]/10">
+                        <div class="absolute top-1 -left-[5px] w-3 h-3 rounded-full bg-[#1A3A8A] ring-4 ring-white"></div>
+                    </div>
+                    <div class="flex justify-between items-center mb-3">
+                        <h2 class="text-lg font-black text-[#1A3A8A]">${day.day}</h2>
+                        <div class="text-[10px] font-bold bg-[#FFD60A] text-[#1A3A8A] px-2 py-1 rounded-lg">重點行程</div>
+                    </div>
+                    <div class="bg-white rounded-[32px] p-5 shadow-[0_4px_20px_rgba(0,0,0,0.05)] border border-[#1A3A8A]/5">
+                        <h3 class="font-bold text-[#333] mb-4 flex items-center gap-2">
+                            <span class="w-1.5 h-4 bg-[#FF3B30] rounded-full"></span>
+                            ${day.title}
+                        </h3>
+                        <div class="space-y-4">
+                            ${day.spots.map(spot => `
+                                <div class="flex items-center gap-4 group">
+                                    <div class="w-10 h-10 rounded-2xl bg-[#F0F4FF] flex items-center justify-center">
+                                        <i data-lucide="map-pin" class="w-4 h-4"></i>
+                                    </div>
+                                    <span class="text-[15px] font-bold text-[#444]">${spot}</span>
+                                    <i data-lucide="chevron-right" class="ml-auto w-4 h-4 text-[#CCC]"></i>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+            lucide.createIcons();
+        };
+
+        const renderFlights = () => {
+            const container = document.getElementById('flight-list');
+            if (!container) return;
+            container.innerHTML = tripData.flights.map(f => `
+                <div class="bg-white rounded-[32px] p-6 border-2 border-dashed border-[#1A3A8A]/20 flex justify-between items-center shadow-sm">
+                    <div>
+                        <div class="flex items-center gap-2 mb-1">
+                            <i data-lucide="plane" class="w-3 h-3 text-[#1A3A8A]"></i>
+                            <span class="text-xs font-black text-[#1A3A8A]">${f.flight}</span>
+                        </div>
+                        <p class="text-2xl font-black text-[#1A3A8A]">${f.from} → ${f.to}</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-[10px] font-bold opacity-40 uppercase">DATE</p>
+                        <p class="font-bold">${f.time.split(' ')[0]}</p>
+                    </div>
+                </div>
+            `).join('');
+            lucide.createIcons();
+        };
+
+        const generateHeroImage = async () => {
+            try {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent?key=${window.apiKey}`;
+                const prompt = "A cute, hand-drawn Japanese style cartoon baseball character with a happy smiley face, wearing a tiny baseball cap, giving a thumbs up. Flat illustration, bold clean lines. Solid navy blue background.";
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: prompt }] }],
+                        generationConfig: { responseModalities: ['TEXT', 'IMAGE'] }
+                    })
+                });
+                const result = await response.json();
+                const base64 = result.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
+                if (base64) {
+                    const container = document.getElementById('hero-image-container');
+                    if (container) container.innerHTML = `<img src="data:image/png;base64,${base64}" class="w-full h-full object-contain">`;
+                }
+            } catch (e) { console.error("Image generation failed", e); }
+        };
+
+        window.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            initFirebase();
+            generateHeroImage();
+        });
+    </script>
+
+    <script>
+        function startApp() {
+            document.getElementById('splash-screen').classList.add('hide');
+            document.getElementById('main-app').classList.remove('hide');
+            window.scrollTo(0, 0);
+        }
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-view').forEach(v => v.classList.add('hide'));
+            document.getElementById('view-' + tabId).classList.remove('hide');
+            document.querySelectorAll('.tab-btn').forEach(b => {
+                b.classList.remove('tab-active');
+                b.classList.add('text-[#8E8E93]', 'opacity-40');
+            });
+            document.getElementById('btn-' + tabId).classList.add('tab-active');
+            document.getElementById('btn-' + tabId).classList.remove('text-[#8E8E93]', 'opacity-40');
+            window.scrollTo(0, 0);
+        }
+
+        async function handleChat() {
+            const input = document.getElementById('chat-input');
+            const msg = input.value.trim();
+            if (!msg) return;
+            const container = document.getElementById('chat-messages');
+            container.innerHTML += `<div class="flex justify-end fade-in"><div class="max-w-[85%] px-5 py-3.5 rounded-[28px] text-[15px] font-bold bg-[#1A3A8A] text-white rounded-tr-none shadow-lg">${msg}</div></div>`;
+            input.value = '';
+            container.scrollTop = container.scrollHeight;
+
+            try {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${window.apiKey}`;
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: msg }] }],
+                        systemInstruction: { parts: [{ text: "你是一位親切的日本旅遊嚮導，說話語氣非常可愛，常使用 emoji，特別擅長棒球知識。" }] }
+                    })
+                });
+                const data = await response.json();
+                const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "哎呀，連線失敗了 😭";
+                container.innerHTML += `<div class="flex justify-start fade-in"><div class="max-w-[85%] px-5 py-3.5 rounded-[28px] text-[15px] font-bold bg-white text-[#1A3A8A] rounded-tl-none border border-[#1A3A8A]/10 shadow-sm">${reply}</div></div>`;
+                container.scrollTop = container.scrollHeight;
+            } catch (e) { console.error(e); }
+        }
+    </script>
+</body>
+</html>
