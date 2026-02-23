@@ -1,0 +1,268 @@
+const { useState, useEffect, useRef } = React;
+
+const STORAGE_KEY = "tokyo-wbc-ui-v1";
+const apiKey = "";
+
+const defaultTripData = {
+  title: "美子 w. 媽の TOKYO WBC 2026 ⚾✨",
+  dates: "2026.03.10 - 03.15",
+  flights: [
+    { id: "1", type: "去程", flight: "CI100", time: "03.10 09:30", from: "TPE", to: "NRT", pnr: "WBC2026" },
+    { id: "2", type: "回程", flight: "CI101", time: "03.15 16:20", from: "NRT", to: "TPE", pnr: "WBC2026" }
+  ],
+  itinerary: [
+    { day: "Day 1 (3/10)", title: "東京登陸！應援準備", spots: ["成田機場", "東京巨蛋飯店 Check-in", "巨蛋周邊商品店"] },
+    { day: "Day 2 (3/11)", title: "WBC 預賽：台灣大賽", spots: ["東京巨蛋觀賽 (18:00)", "水道橋居酒屋慶功"] },
+    { day: "Day 3 (3/12)", title: "築地市場與應援休養", spots: ["築地場外市場", "豐洲千客萬來", "台場散步"] },
+    { day: "Day 4 (3/13)", title: "應援補給！銀座血拼", spots: ["銀座 Uniqlo 旗艦店", "銀座木村家", "棒球主題餐廳"] },
+    { day: "Day 5 (3/14)", title: "巨蛋巡禮與神社祈福", spots: ["野球殿堂博物館", "湯島天滿宮(祈求全壘打)", "澀谷夜景"] },
+    { day: "Day 6 (3/15)", title: "感動回程", spots: ["上野公園散策", "Skyliner 赴機場", "免稅店最後衝刺"] }
+  ]
+};
+
+function App() {
+  const [hasStarted, setHasStarted] = useState(false);
+  const [activeTab, setActiveTab] = useState("itinerary");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiAdvice, setAiAdvice] = useState({});
+  const [chatInput, setChatInput] = useState("");
+  const [generatedImage, setGeneratedImage] = useState(null);
+  const [chatHistory, setChatHistory] = useState([
+    { role: "bot", text: "美子您好！我是您的東京 WBC 應援小助手。⚾✨ 今天的應援熱情也滿分喔！" }
+  ]);
+  const [tripData, setTripData] = useState(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    return saved ? JSON.parse(saved) : defaultTripData;
+  });
+  const chatEndRef = useRef(null);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(tripData));
+  }, [tripData]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatHistory]);
+
+  useEffect(() => {
+    if (generatedImage || !apiKey) return;
+    const generateHeroImage = async () => {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent?key=${apiKey}`;
+      const prompt = "A cute Japanese style baseball mascot on solid deep navy blue #1A3A8A background.";
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseModalities: ["TEXT", "IMAGE"] }
+        })
+      });
+      const result = await response.json();
+      const base64 = result.candidates?.[0]?.content?.parts?.find((p) => p.inlineData)?.inlineData?.data;
+      if (base64) setGeneratedImage(`data:image/png;base64,${base64}`);
+    };
+    generateHeroImage();
+  }, [generatedImage]);
+
+  const callGemini = async (prompt) => {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    if (prompt.includes("日文") || prompt.includes("翻譯")) {
+      return "應援常用句：頑張れ台湾！(Ganbare Taiwan!)\n問路：すみません、東京ドームはどこですか？";
+    }
+    return "今天建議提早 40 分鐘進場、先買水和保暖外套，賽後避開人潮再搭電車回飯店！⚾";
+  };
+
+  const generateDayAdvice = async (dayIndex) => {
+    if (aiLoading) return;
+    setAiLoading(true);
+    const day = tripData.itinerary[dayIndex];
+    const advice = await callGemini(`今天 ${day.day} 景點：${day.spots.join("、")}`);
+    setAiAdvice((prev) => ({ ...prev, [dayIndex]: advice }));
+    setAiLoading(false);
+  };
+
+  const handleChat = async () => {
+    if (!chatInput.trim() || aiLoading) return;
+    const userMsg = chatInput;
+    setChatInput("");
+    setChatHistory((prev) => [...prev, { role: "user", text: userMsg }]);
+    setAiLoading(true);
+    const response = await callGemini(userMsg);
+    setChatHistory((prev) => [...prev, { role: "bot", text: response }]);
+    setAiLoading(false);
+  };
+
+  if (!hasStarted) {
+    return (
+      <div className="min-h-screen bg-[#1A3A8A] flex flex-col items-center justify-center p-8 text-center overflow-hidden">
+        <div className="relative mb-8">
+          <div className="relative w-56 h-56 flex items-center justify-center animate-[bounce_3s_infinite]">
+            {generatedImage ? (
+              <img src={generatedImage} alt="Baseball Hero" className="w-full h-full object-contain" />
+            ) : (
+              <div className="w-48 h-48 bg-white/10 rounded-full flex items-center justify-center animate-pulse text-6xl">⚾</div>
+            )}
+            <div className="absolute -top-4 -right-4 text-4xl animate-ping">✨</div>
+          </div>
+        </div>
+
+        <div className="space-y-2 mb-12 relative">
+          <h2 className="text-white/80 font-bold tracking-[0.3em] text-sm uppercase">Meiko & Mom</h2>
+          <h1 className="text-4xl font-black text-white tracking-tight leading-tight">
+            美子 w. 媽の
+            <br />
+            <span className="text-[#FFD60A]">WBC 2026</span>
+          </h1>
+          <div className="h-1 w-12 bg-[#FF3B30] mx-auto mt-4 rounded-full"></div>
+        </div>
+
+        <button
+          onClick={() => setHasStarted(true)}
+          className="group relative w-full max-w-xs bg-white text-[#1A3A8A] py-5 rounded-[2.5rem] font-black text-xl shadow-[0_8px_0_#0D1F4A] active:shadow-none active:translate-y-2 transition-all duration-75 flex items-center justify-center gap-3"
+        >
+          進入應援手冊 🏆
+        </button>
+
+        <p className="mt-12 text-white/40 text-[10px] font-bold tracking-[0.5em] uppercase">Ready to Play Ball</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#FDFCF8] text-[#1A1A1A] font-sans">
+      <header className="relative w-full bg-[#1A3A8A] text-white pt-16 pb-8 px-6 rounded-b-[48px] shadow-xl mb-4">
+        <div className="max-w-lg mx-auto flex justify-between items-start">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="bg-[#FF3B30] text-[10px] font-bold px-2 py-0.5 rounded-full">LIVE 2026</span>
+              <p className="text-xs font-bold opacity-70 tracking-widest">{tripData.dates}</p>
+            </div>
+            <h1 className="text-2xl font-black tracking-tight">{tripData.title}</h1>
+          </div>
+          <button onClick={() => setHasStarted(false)} className="bg-white/10 p-2.5 rounded-2xl active:scale-90 transition-transform">
+            ❤️
+          </button>
+        </div>
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-1.5 opacity-30">
+          {[1, 2, 3].map((i) => <div key={i} className="w-1.5 h-1.5 rounded-full bg-white"></div>)}
+        </div>
+      </header>
+
+      <main className="px-5 pt-4 pb-36 max-w-lg mx-auto">
+        {activeTab === "itinerary" && (
+          <div className="space-y-8">
+            {tripData.itinerary.map((day, idx) => (
+              <div key={idx} className="relative pl-8">
+                <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-[#1A3A8A]/10">
+                  <div className="absolute top-1 -left-[5px] w-3 h-3 rounded-full bg-[#1A3A8A] ring-4 ring-white"></div>
+                </div>
+
+                <div className="flex justify-between items-center mb-3">
+                  <h2 className="text-lg font-black text-[#1A3A8A]">{day.day}</h2>
+                  <button onClick={() => generateDayAdvice(idx)} className="text-xs font-bold text-[#1A3A8A] bg-[#FFD60A] px-3 py-1.5 rounded-xl shadow-sm active:scale-95 transition-transform">
+                    {aiLoading ? "產生中..." : "應援攻略 ✨"}
+                  </button>
+                </div>
+
+                <div className="bg-white rounded-[32px] p-5 shadow-[0_4px_20px_rgba(0,0,0,0.05)] border border-[#1A3A8A]/5">
+                  <h3 className="font-bold text-[#333] mb-4 flex items-center gap-2">
+                    <span className="w-1.5 h-4 bg-[#FF3B30] rounded-full"></span>
+                    {day.title}
+                  </h3>
+                  <div className="space-y-4">
+                    {day.spots.map((spot, i) => (
+                      <div key={i} className="flex items-center gap-4 group">
+                        <div className="w-10 h-10 rounded-2xl bg-[#F0F4FF] flex items-center justify-center group-hover:bg-[#1A3A8A] group-hover:text-white transition-all">
+                          📍
+                        </div>
+                        <span className="text-[15px] font-bold text-[#444]">{spot}</span>
+                        <span className="ml-auto text-[#CCC]">›</span>
+                      </div>
+                    ))}
+                  </div>
+                  {aiAdvice[idx] && (
+                    <div className="mt-4 bg-[#F8FAFF] border border-[#1A3A8A]/10 rounded-2xl p-3 text-sm font-bold text-[#1A3A8A] whitespace-pre-line">
+                      {aiAdvice[idx]}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {activeTab === "tickets" && (
+          <div className="space-y-6">
+            <h2 className="text-2xl font-black text-[#1A3A8A] px-1">應援錢包</h2>
+            <div className="bg-[#1A3A8A] rounded-[40px] text-white p-8 shadow-2xl relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-8 opacity-10 text-8xl">🏆</div>
+              <div className="relative z-10">
+                <div className="flex justify-between items-center mb-10">
+                  <div className="bg-white/20 backdrop-blur px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest">Game Entry</div>
+                  <div className="text-[#FFD60A] text-2xl">⚡</div>
+                </div>
+                <h4 className="text-3xl font-black mb-1">台灣 vs 日本</h4>
+                <p className="text-sm font-bold opacity-60">東京巨蛋 | 內野應援 A 區</p>
+                <div className="mt-10 pt-6 border-t border-white/10 flex justify-between">
+                  <div><p className="text-[10px] font-bold opacity-40 uppercase">Gate</p><p className="text-lg font-black">25</p></div>
+                  <div><p className="text-[10px] font-bold opacity-40 uppercase">Seat</p><p className="text-lg font-black">12-B</p></div>
+                  <div><p className="text-[10px] font-bold opacity-40 uppercase">Start</p><p className="text-lg font-black">18:00</p></div>
+                </div>
+              </div>
+            </div>
+
+            {tripData.flights.map((f, idx) => (
+              <div key={idx} className="bg-white rounded-[32px] p-6 border-2 border-dashed border-[#1A3A8A]/20 flex justify-between items-center shadow-sm">
+                <div>
+                  <div className="flex items-center gap-2 mb-1"><span>✈️</span><span className="text-xs font-black text-[#1A3A8A]">{f.flight}</span></div>
+                  <p className="text-2xl font-black text-[#1A3A8A]">{f.from} → {f.to}</p>
+                </div>
+                <div className="text-right"><p className="text-[10px] font-bold opacity-40">DATE</p><p className="font-bold">{f.time.split(" ")[0]}</p></div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {activeTab === "chat" && (
+          <div className="flex flex-col h-[65vh]">
+            <div className="flex-1 overflow-y-auto space-y-5 pb-6 px-1">
+              {chatHistory.map((msg, i) => (
+                <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[85%] px-5 py-3.5 rounded-[28px] text-[15px] font-bold whitespace-pre-line ${msg.role === "user" ? "bg-[#1A3A8A] text-white rounded-tr-none shadow-lg" : "bg-white text-[#1A3A8A] rounded-tl-none border border-[#1A3A8A]/10 shadow-sm"}`}>
+                    {msg.text}
+                  </div>
+                </div>
+              ))}
+              <div ref={chatEndRef} />
+            </div>
+            <div className="sticky bottom-0 bg-[#FDFCF8] pt-4 pb-4 px-1">
+              <div className="flex gap-2 items-center bg-white rounded-[24px] px-5 py-3 shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-[#1A3A8A]/5">
+                <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleChat()} placeholder="問問應援小幫手..." className="flex-1 bg-transparent border-none text-[15px] font-bold focus:ring-0 outline-none" />
+                <button onClick={handleChat} className="bg-[#FFD60A] text-[#1A3A8A] p-2.5 rounded-2xl active:scale-90 transition-transform">{aiLoading ? "…" : "➤"}</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+
+      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-xl border-t border-[#1A3A8A]/10 pb-10 pt-3">
+        <div className="flex justify-around items-center max-w-md mx-auto px-6">
+          <button onClick={() => setActiveTab("itinerary")} className={`flex flex-col items-center gap-1 transition-all ${activeTab === "itinerary" ? "text-[#1A3A8A] scale-110" : "text-[#8E8E93] opacity-40"}`}>
+            <span className="text-2xl">🗓️</span>
+            <span className="text-[10px] font-black uppercase">行程</span>
+          </button>
+          <button onClick={() => setActiveTab("tickets")} className={`flex flex-col items-center gap-1 transition-all ${activeTab === "tickets" ? "text-[#1A3A8A] scale-110" : "text-[#8E8E93] opacity-40"}`}>
+            <span className="text-2xl">🎫</span>
+            <span className="text-[10px] font-black uppercase">錢包</span>
+          </button>
+          <button onClick={() => setActiveTab("chat")} className={`flex flex-col items-center gap-1 transition-all ${activeTab === "chat" ? "text-[#1A3A8A] scale-110" : "text-[#8E8E93] opacity-40"}`}>
+            <span className="text-2xl">◼︎</span>
+            <span className="text-[10px] font-black uppercase">助手</span>
+          </button>
+        </div>
+      </nav>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
